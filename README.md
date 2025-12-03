@@ -1,6 +1,6 @@
-# PumpFun & Four.Meme Phishy Token Checker
+# Pump.fun Phishy Token Checker
 
-This script checks if a Four Meme token on BSC (Binance Smart Chain) is potentially phishy by analyzing the relationship between token transfers and purchases.
+This tool checks if a Pump.fun token (Solana) is potentially phishy by analyzing the relationship between token transfers and purchases.
 
 ## Quick Start
 
@@ -41,29 +41,32 @@ You can use the script in two ways:
 python app.py
 ```
 
-Then open your browser and go to `http://localhost:5000`
+Then open your browser and go to `http://localhost:8080`
 
 **Option 2: Command Line**
 
 ```bash
-python check_phishy_token.py 0x35a7bb282d8caafe71617c9d52ee30f1adfe4444
+python check_phishy_token.py WZrxegwJK4vWFGC149Ajt86vbKA9tsrJxu8mJFdpump
 ```
+
+Note: Bonding curve is automatically detected.
 
 ## How It Works
 
-The script uses two Bitquery Four.meme APIs :
+The tool analyzes token transfers vs purchases using Bitquery APIs:
 
-1. **First Query**: Gets the first transfers of a token to addresses, including total transferred amounts
-2. **Second Query**: Checks if those addresses ever bought the token, when, and how much they bought
+1. **First Query**: Gets the first transfers of a token to addresses
+2. **Second Query**: Checks if those addresses ever bought the token
 
-The analysis flags a token as phishy if:
+A token is flagged as phishy if:
 
 - An address received a transfer but never bought the token
 - An address's first transfer happened before their first buy
 
-This pattern indicates that tokens were sent to addresses (often to influencers/KOLs) before they purchased, which is a common phishing/scam tactic to make the token look like a good buy.
+The tool also:
 
-The script also calculates **how much was transferred without being purchased** by subtracting `total_transferred - total_bought` for each suspicious address.
+- Automatically finds the bonding curve address
+- Shows top 10 holders with their pump token counts and trade activity (last 6h)
 
 ## Output
 
@@ -81,17 +84,16 @@ The script will output:
 
 ### Example Output
 
-`0x35a7bb282d8caafe71617c9d52ee30f1adfe4444` this token is not phishy, we have just shown what the terminal log will look like if the token would have been a phishy token.
-
 ```
 ============================================================
-Checking token: 0x35a7bb282d8caafe71617c9d52ee30f1adfe4444
+Checking Pump.fun token: WZrxegwJK4vWFGC149Ajt86vbKA9tsrJxu8mJFdpump
 ============================================================
 
-Fetching first transfers for token: 0x35a7bb282d8caafe71617c9d52ee30f1adfe4444
+Finding bonding curve address...
+Found bonding curve: ABC123...
+
 Found 150 addresses that received transfers
 
-Fetching first buys for 150 addresses...
 Found buy records for 45 addresses
 
 ============================================================
@@ -106,7 +108,7 @@ Addresses with normal behavior: 45
 
 Found 105 address(es) with suspicious behavior:
 
-1. Address: 0x1234...
+1. Address: ABC123...
    First Transfer: 2024-01-15 10:30:00 UTC
    First Buy: N/A
    Total Transferred: 1,000,000.00
@@ -142,24 +144,27 @@ The project includes a modern web3-styled web interface for easy token checking:
 
 2. Open your browser and navigate to `http://localhost:8080` (or the port shown in the terminal)
 
-3. Enter a token address and optionally your API key (if not in .env)
+3. Enter a Pump.fun token address
 
 4. Click "Check Token" to analyze
 
 The web UI features:
 
 - Modern web3 design with dark theme
-- Real-time analysis results
+- Automatic bonding curve detection
+- Top 10 holders table (with pump token counts and trade stats)
+- Clickable addresses linking to DEXrabbit
+- Copy-to-clipboard functionality for addresses
 - Detailed breakdown of phishy addresses
 - Summary statistics
-- Responsive design for mobile and desktop
+- Responsive design
 
 ## Notes
 
-- The script checks up to 1000 addresses (limit in Query 1)
-- Requires network connection to access Bitquery API
-- **API key is required** - Bitquery API requires authentication
-- The script focuses on BSC network and FourMeme protocol trades
-- The `.env` file is gitignored and won't be committed to the repository
-- Queries may take some time to execute (10-60+ seconds) - this is normal for blockchain data queries
-- The web UI runs on port 8080 by default (set PORT environment variable to change, e.g., `PORT=3000 python app.py`)
+- Checks up to 1000 addresses per token
+- Only supports Pump.fun tokens (Solana)
+- Bonding curve is automatically detected
+- Only supports tokens created in the last 8 hours
+- API key is required (set in `.env` file)
+- Queries may take 10-60+ seconds (normal for blockchain data)
+- Web UI runs on port 8080 by default

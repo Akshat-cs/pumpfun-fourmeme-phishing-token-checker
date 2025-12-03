@@ -8,7 +8,6 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 from check_phishy_token import (
-    get_first_transfers, get_first_buys, analyze_phishy_behavior,
     get_first_transfers_pumpfun, get_first_buys_pumpfun, analyze_phishy_behavior_pumpfun,
     get_bonding_curve_address, get_top_holders_pumpfun, get_pump_tokens_count, get_trades_count_last_6h
 )
@@ -48,18 +47,10 @@ def get_recent_phishy():
     })
 
 
-def detect_token_type(token_address: str) -> str:
-    """Detect if token is BSC (Four.Meme) or Solana (Pump.fun) based on address format."""
-    # Solana addresses are base58 encoded, typically 32-44 characters
-    # BSC addresses are hex, start with 0x and are 42 characters
-    if token_address.startswith('0x') and len(token_address) == 42:
-        return 'bsc'
-    # Solana addresses are longer and don't start with 0x
-    elif len(token_address) >= 32 and len(token_address) <= 44:
-        return 'solana'
-    else:
-        # Default to BSC for unknown format
-        return 'bsc'
+def validate_solana_address(token_address: str) -> bool:
+    """Validate if address is a valid Solana address format."""
+    # Solana addresses are base58 encoded, typically 32-44 characters, don't start with 0x
+    return not token_address.startswith('0x') and len(token_address) >= 32 and len(token_address) <= 44
 
 
 @app.route('/api/check', methods=['POST'])
@@ -83,22 +74,75 @@ def check_token():
                 'error': 'Server configuration error: API key not found. Please contact the administrator.'
             }), 500
         
-        # Detect token type if not provided
-        if not token_type:
-            token_type = detect_token_type(token_address)
+        # Validate Solana address format
+        if not validate_solana_address(token_address):
+            return jsonify({
+                'success': False,
+                'error': 'Invalid Pump.fun token address. Solana addresses should be 32-44 characters and not start with 0x.',
+                'error_type': 'info'
+            }), 400
         
-        # Route to appropriate functions based on token type
-        if token_type == 'solana' or token_type == 'pumpfun':
-            # Pump.fun (Solana) token - automatically find bonding curve
+        # All tokens are Pump.fun (Solana)
+        # Pump.fun token - automatically find bonding curve
+        if not bonding_curve:
+            bonding_curve = get_bonding_curve_address(token_address, API_KEY)
             if not bonding_curve:
-                bonding_curve = get_bonding_curve_address(token_address, API_KEY)
-                if not bonding_curve:
-                    return jsonify({
-                        'success': False,
-                        'error': 'Could not find bonding curve address for this Pump.fun token'
-                    }), 400
+                return jsonify({
+                    'success': False,
+                    'error': 'We only support tokens created in the last 8 hours',
+                    'error_type': 'info'
+                }), 400
             
-            # Get top 10 holders with their stats
+        # Get top 10 holders with their stats
+        top_holders = get_top_holders_pumpfun(token_address, API_KEY)
+        holders_with_stats = []
+        for holder in top_holders:
+            address = holder["address"]
+            pump_tokens = get_pump_tokens_count(address, API_KEY)
+            trades_6h = get_trades_count_last_6h(address, API_KEY)
+            holders_with_stats.append({
+                "address": address,
+                "holding": holder["holding"],
+                "pump_tokens_count": pump_tokens,
+                "trades_6h": trades_6h
+            })
+        
+        # Print top 10 holders after calculation
+        print("\n" + "="*80)
+        print("TOP 10 HOLDERS (After Calculation):")
+        print("="*80)
+        for i, holder_stat in enumerate(holders_with_stats, 1):
+            print(f"#{i} Address: {holder_stat['address']}")
+            print(f"   Holding: {holder_stat.get('holding', 0)}")
+            print(f"   Pump.Fun tokens held: {holder_stat['pump_tokens_count']}")
+            print(f"   Trades (last 6h): {holder_stat['trades_6h']}")
+            print()
+        print("="*80 + "\n")
+        
+        transfers = get_first_transfers_pumpfun(token_address, bonding_curve, API_KEY)
+        
+        if not transfers:
+            return jsonify({
+                'success': True,
+                'phishy': False,
+                'token_type': 'pumpfun',
+                'message': 'No transfers found for this token',
+                'data': {
+                    'total_addresses': 0,
+                    'phishy_count': 0,
+                    'phishy_addresses': [],
+                    'top_holders': holders_with_stats,
+                    'bonding_curve': bonding_curve
+                }
+            })
+        
+        # Extract addresses from Solana structure
+        addresses = [t["Transfer"]["Receiver"]["Token"]["Owner"] for t in transfers]
+        buy_data = get_first_buys_pumpfun(token_address, addresses, API_KEY)
+        phishy_count, phishy_addresses = analyze_phishy_behavior_pumpfun(transfers, buy_data)
+        
+        # Ensure top holders are fetched (they should already be, but just in case)
+        if not holders_with_stats:
             top_holders = get_top_holders_pumpfun(token_address, API_KEY)
             holders_with_stats = []
             for holder in top_holders:
@@ -111,94 +155,22 @@ def check_token():
                     "pump_tokens_count": pump_tokens,
                     "trades_6h": trades_6h
                 })
-            
-            # Print top 10 holders after calculation
-            print("\n" + "="*80)
-            print("TOP 10 HOLDERS (After Calculation):")
-            print("="*80)
-            for i, holder_stat in enumerate(holders_with_stats, 1):
-                print(f"#{i} Address: {holder_stat['address']}")
-                print(f"   Holding: {holder_stat.get('holding', 0)}")
-                print(f"   Pump.Fun tokens held: {holder_stat['pump_tokens_count']}")
-                print(f"   Trades (last 6h): {holder_stat['trades_6h']}")
-                print()
-            print("="*80 + "\n")
-            
-            transfers = get_first_transfers_pumpfun(token_address, bonding_curve, API_KEY)
-            
-            if not transfers:
-                return jsonify({
-                    'success': True,
-                    'phishy': False,
-                    'token_type': 'pumpfun',
-                    'message': 'No transfers found for this token',
-                    'data': {
-                        'total_addresses': 0,
-                        'phishy_count': 0,
-                        'phishy_addresses': [],
-                        'top_holders': holders_with_stats,
-                        'bonding_curve': bonding_curve
-                    }
-                })
-            
-            # Extract addresses from Solana structure
-            addresses = [t["Transfer"]["Receiver"]["Token"]["Owner"] for t in transfers]
-            buy_data = get_first_buys_pumpfun(token_address, addresses, API_KEY)
-            phishy_count, phishy_addresses = analyze_phishy_behavior_pumpfun(transfers, buy_data)
-            
-            # Ensure top holders are fetched (they should already be, but just in case)
-            if not holders_with_stats:
-                top_holders = get_top_holders_pumpfun(token_address, API_KEY)
-                holders_with_stats = []
-                for holder in top_holders:
-                    address = holder["address"]
-                    pump_tokens = get_pump_tokens_count(address, API_KEY)
-                    trades_6h = get_trades_count_last_6h(address, API_KEY)
-                    holders_with_stats.append({
-                        "address": address,
-                        "holding": holder["holding"],
-                        "pump_tokens_count": pump_tokens,
-                        "trades_6h": trades_6h
-                    })
-        else:
-            # Four.Meme (BSC) token
-            transfers = get_first_transfers(token_address, API_KEY)
-            
-            if not transfers:
-                return jsonify({
-                    'success': True,
-                    'phishy': False,
-                    'token_type': 'fourmeme',
-                    'message': 'No transfers found for this token',
-                    'data': {
-                        'total_addresses': 0,
-                        'phishy_count': 0,
-                        'phishy_addresses': []
-                    }
-                })
-            
-            addresses = [t["Transfer"]["Receiver"] for t in transfers]
-            buy_data = get_first_buys(token_address, addresses, API_KEY)
-            phishy_count, phishy_addresses = analyze_phishy_behavior(transfers, buy_data)
         
         # Format response
         result = {
             'success': True,
             'phishy': phishy_count > 0,
             'token_address': token_address,
-            'token_type': 'pumpfun' if (token_type == 'solana' or token_type == 'pumpfun') else 'fourmeme',
+            'token_type': 'pumpfun',
             'data': {
                 'total_addresses': len(transfers),
                 'phishy_count': phishy_count,
                 'normal_count': len(transfers) - phishy_count,
-                'phishy_addresses': phishy_addresses
+                'phishy_addresses': phishy_addresses,
+                'top_holders': holders_with_stats,
+                'bonding_curve': bonding_curve
             }
         }
-        
-        # Add top holders for Pump.fun tokens
-        if token_type == 'solana' or token_type == 'pumpfun':
-            result['data']['top_holders'] = holders_with_stats
-            result['data']['bonding_curve'] = bonding_curve  # Include bonding curve address for UI tagging
         
         # Calculate totals
         if phishy_count > 0:
@@ -224,7 +196,7 @@ def check_token():
             # Store in cache (only phishy tokens)
             phishy_tokens_cache.append({
                 'token_address': token_address,
-                'token_type': result.get('token_type', 'fourmeme'),
+                'token_type': 'pumpfun',
                 'phishy_count': phishy_count,
                 'timestamp': datetime.now().isoformat(),
                 'totals': result['data']['totals']

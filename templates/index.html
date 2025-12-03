@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Phishy Token Checker - Four.Meme & Pump.fun</title>
+    <title>Pump.fun Phishy Token Checker</title>
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='css/style.css') }}"
@@ -13,16 +13,16 @@
     <div class="container">
       <header>
         <h1>🔍 Phishy Token Checker</h1>
-        <p class="subtitle">Detect suspicious token behavior on BSC & Solana</p>
+        <p class="subtitle">Detect suspicious token behavior on Pump.fun</p>
       </header>
 
       <div class="card">
         <div class="input-section">
-          <label for="tokenAddress">Token Address (BSC or Solana)</label>
+          <label for="tokenAddress">Pump.fun Token Address</label>
           <input
             type="text"
             id="tokenAddress"
-            placeholder="0x... (BSC) or 3Fymji2JPhhbKuCzNPKEyjdEuF9cyFuQ8HksyjRGpump (Pump.fun)"
+            placeholder="3Fymji2JPhhbKuCzNPKEyjdEuF9cyFuQ8HksyjRGpump"
             class="input-field"
           />
           <div
@@ -32,9 +32,7 @@
               margin-top: 4px;
               margin-bottom: 8px;
             "
-          >
-            Supports: Four.Meme (BSC) and Pump.fun (Solana) tokens.
-          </div>
+          ></div>
 
           <div style="position: relative">
             <button id="checkButton" class="btn-primary">
@@ -59,40 +57,6 @@
 
         <div id="resultSection" class="result-section" style="display: none">
           <div id="resultContent"></div>
-        </div>
-
-        <div
-          id="recentPhishySection"
-          class="recent-phishy-section"
-          style="
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid var(--border);
-          "
-        >
-          <h3
-            style="
-              margin-bottom: 20px;
-              color: var(--accent-primary);
-              display: flex;
-              align-items: center;
-              gap: 10px;
-            "
-          >
-            <span>📋</span>
-            <span>Recently Searched Phishy Tokens</span>
-          </h3>
-          <div id="recentTokensContainer" class="recent-tokens-grid">
-            <div
-              style="
-                text-align: center;
-                color: var(--text-secondary);
-                padding: 20px;
-              "
-            >
-              Loading recent phishy tokens...
-            </div>
-          </div>
         </div>
       </div>
 

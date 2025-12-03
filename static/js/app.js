@@ -6,50 +6,30 @@ const cancelButton = document.getElementById('cancelButton');
 const btnProgress = document.getElementById('btnProgress');
 
 // Helper function to create address with link and copy functionality
-function formatAddressWithLink(address, isSolana = false) {
+function formatAddressWithLink(address) {
     const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
     const fullAddress = address;
-    const addressId = `addr-${address.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    const dexrabbitLink = `https://dexrabbit.com/solana/trader/${address}`;
     
-    // Create dexrabbit link for Solana addresses
-    const dexrabbitLink = isSolana ? `https://dexrabbit.com/solana/trader/${address}` : null;
-    
-    if (dexrabbitLink) {
-        return `
-            <span style="display: inline-flex; align-items: center; gap: 6px;">
-                <a href="${dexrabbitLink}" target="_blank" rel="noopener noreferrer" 
-                   style="color: var(--accent-primary); text-decoration: none; font-weight: 500;"
-                   onmouseover="this.style.textDecoration='underline'" 
-                   onmouseout="this.style.textDecoration='none'"
-                   title="View on DEXrabbit: ${fullAddress}">
-                    ${shortAddress}
-                </a>
-                <button class="copy-address-btn" 
-                        data-address="${fullAddress.replace(/"/g, '&quot;')}"
-                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: var(--text-secondary); font-size: 0.75rem; transition: all 0.2s;"
-                        title="Copy full address"
-                        onmouseover="this.style.borderColor='var(--accent-primary)'"
-                        onmouseout="this.style.borderColor='var(--border)'">
-                    📋
-                </button>
-            </span>
-        `;
-    } else {
-        // For BSC or other addresses, just show with copy button
-        return `
-            <span style="display: inline-flex; align-items: center; gap: 6px;">
-                <span style="font-weight: 500;">${shortAddress}</span>
-                <button class="copy-address-btn" 
-                        data-address="${fullAddress.replace(/"/g, '&quot;')}"
-                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: var(--text-secondary); font-size: 0.75rem; transition: all 0.2s;"
-                        title="Copy full address"
-                        onmouseover="this.style.borderColor='var(--accent-primary)'"
-                        onmouseout="this.style.borderColor='var(--border)'">
-                    📋
-                </button>
-            </span>
-        `;
-    }
+    return `
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+            <a href="${dexrabbitLink}" target="_blank" rel="noopener noreferrer" 
+               style="color: var(--accent-primary); text-decoration: none; font-weight: 500;"
+               onmouseover="this.style.textDecoration='underline'" 
+               onmouseout="this.style.textDecoration='none'"
+               title="View on DEXrabbit: ${fullAddress}">
+                ${shortAddress}
+            </a>
+            <button class="copy-address-btn" 
+                    data-address="${fullAddress.replace(/"/g, '&quot;')}"
+                    style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: var(--text-secondary); font-size: 0.75rem; transition: all 0.2s;"
+                    title="Copy full address"
+                    onmouseover="this.style.borderColor='var(--accent-primary)'"
+                    onmouseout="this.style.borderColor='var(--border)'">
+                📋
+            </button>
+        </span>
+    `;
 }
 
 // Add event delegation for copy buttons
@@ -111,14 +91,11 @@ async function handleCheck() {
         return;
     }
     
-    // Validate address format (basic check)
-    // BSC addresses: 0x + 40 hex chars = 42 total
-    // Solana addresses: 32-44 base58 characters
-    const isBSC = tokenAddress.startsWith('0x') && tokenAddress.length === 42;
+    // Validate Solana address format
     const isSolana = !tokenAddress.startsWith('0x') && tokenAddress.length >= 32 && tokenAddress.length <= 44;
     
-    if (!isBSC && !isSolana) {
-        showError('Invalid token address format. BSC addresses should start with 0x and be 42 characters. Solana addresses should be 32-44 characters.');
+    if (!isSolana) {
+        showError('Invalid Pump.fun token address format. Solana addresses should be 32-44 characters and not start with 0x.');
         return;
     }
     
@@ -147,6 +124,12 @@ async function handleCheck() {
         const data = await response.json();
         
         if (!response.ok) {
+            // Check if it's an info message (not a real error)
+            if (data.error_type === 'info') {
+                showInfoMessage(data.error || 'An error occurred');
+                resetUI();
+                return;
+            }
             throw new Error(data.error || 'An error occurred');
         }
         
@@ -223,7 +206,7 @@ function displayResults(data) {
     resultSection.style.display = 'block';
     
     // Set token type for formatting
-    currentTokenType = data.token_type || 'fourmeme';
+    currentTokenType = 'pumpfun';
     
     if (!data.phishy) {
         displaySafeResult(data);
@@ -235,9 +218,9 @@ function displayResults(data) {
 function displaySafeResult(data) {
     const { top_holders, bonding_curve } = data.data || {};
     
-    // Top holders section for Pump.fun tokens
+    // Top holders section
     let topHoldersHTML = '';
-    if (data.token_type === 'pumpfun' && top_holders && top_holders.length > 0) {
+    if (top_holders && top_holders.length > 0) {
         topHoldersHTML = `
             <div class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
                 <h3 style="margin-bottom: 20px; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
@@ -259,7 +242,7 @@ function displaySafeResult(data) {
                                         <td style="padding: 12px; color: var(--text-primary); font-weight: 600;">#${index + 1}</td>
                                         <td style="padding: 12px; color: var(--text-primary);">
                                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                                ${formatAddressWithLink(holder.address, true)}
+                                                ${formatAddressWithLink(holder.address)}
                                                 ${isBondingCurve ? '<span style="background: var(--accent-primary); color: var(--bg-primary); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Bonding Curve</span>' : ''}
                                             </div>
                                         </td>
@@ -275,7 +258,7 @@ function displaySafeResult(data) {
         `;
     }
     
-    const tokenTypeLabel = data.token_type === 'pumpfun' ? 'Pump.fun' : 'Four.Meme';
+    const tokenTypeLabel = 'Pump.fun';
     resultContent.innerHTML = `
         <div class="result-header safe">
             <span class="result-icon">✅</span>
@@ -288,8 +271,6 @@ function displaySafeResult(data) {
         </div>
         ${topHoldersHTML}
     `;
-    // Refresh recent phishy list
-    setTimeout(loadRecentPhishy, 500);
 }
 
 function displayPhishyResult(data) {
@@ -301,16 +282,15 @@ function displayPhishyResult(data) {
         phishyListHTML = '<div class="phishy-list"><h3 style="margin-bottom: 20px; color: var(--danger);">⚠️ Suspicious Addresses</h3>';
         
         phishy_addresses.forEach((addr, index) => {
-            const transferred = formatNumber(addr.total_transferred || 0, data.token_type);
-            const bought = formatNumber(addr.total_bought || 0, data.token_type);
-            const withoutBuy = formatNumber(addr.transferred_without_buy || 0, data.token_type);
+            const transferred = formatNumber(addr.total_transferred || 0);
+            const bought = formatNumber(addr.total_bought || 0);
+            const withoutBuy = formatNumber(addr.transferred_without_buy || 0);
             
-            const isSolanaAddr = !addr.address.startsWith('0x') && addr.address.length >= 32;
             phishyListHTML += `
                 <div class="phishy-item">
                     <div class="phishy-item-header">
                         <span style="color: var(--danger); font-weight: 700;">#${index + 1}</span>
-                        <span class="address">${formatAddressWithLink(addr.address, isSolanaAddr)}</span>
+                        <span class="address">${formatAddressWithLink(addr.address)}</span>
                     </div>
                     <div class="phishy-details">
                         <div class="detail-item">
@@ -341,9 +321,9 @@ function displayPhishyResult(data) {
         phishyListHTML += '</div>';
     }
     
-    // Top holders section for Pump.fun tokens
+    // Top holders section
     let topHoldersHTML = '';
-    if (data.token_type === 'pumpfun' && top_holders && top_holders.length > 0) {
+    if (top_holders && top_holders.length > 0) {
         const { bonding_curve } = data.data || {};
         topHoldersHTML = `
             <div class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
@@ -366,7 +346,7 @@ function displayPhishyResult(data) {
                                         <td style="padding: 12px; color: var(--text-primary); font-weight: 600;">#${index + 1}</td>
                                         <td style="padding: 12px; color: var(--text-primary);">
                                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                                ${formatAddressWithLink(holder.address, true)}
+                                                ${formatAddressWithLink(holder.address)}
                                                 ${isBondingCurve ? '<span style="background: var(--accent-primary); color: var(--bg-primary); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Bonding Curve</span>' : ''}
                                             </div>
                                         </td>
@@ -382,7 +362,7 @@ function displayPhishyResult(data) {
         `;
     }
     
-    const tokenTypeLabel = data.token_type === 'pumpfun' ? 'Pump.fun' : 'Four.Meme';
+    const tokenTypeLabel = 'Pump.fun';
     resultContent.innerHTML = `
         <div class="result-header phishy">
             <span class="result-icon">⚠️</span>
@@ -396,26 +376,20 @@ function displayPhishyResult(data) {
         ${totals ? `
             <div class="summary-section">
                 <div class="summary-title">📊 Summary of Phishy Behavior</div>
-                ${data.token_type === 'fourmeme' ? `
-                    <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px; font-style: italic;">
-                        Note: Amounts shown are in tokens (converted from smallest unit, assuming 18 decimals)
-                    </div>
-                ` : `
-                    <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px; font-style: italic;">
-                        Note: Amounts are already decimal-adjusted for Pump.fun tokens
-                    </div>
-                `}
+                <div style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 16px; font-style: italic;">
+                    Note: Amounts are already decimal-adjusted for Pump.fun tokens
+                </div>
                 <div class="summary-grid">
                     <div class="summary-item">
-                        <div class="summary-value">${formatNumber(totals.total_transferred, data.token_type)}</div>
+                        <div class="summary-value">${formatNumber(totals.total_transferred)}</div>
                         <div class="summary-label">Total Transferred</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value">${formatNumber(totals.total_bought, data.token_type)}</div>
+                        <div class="summary-value">${formatNumber(totals.total_bought)}</div>
                         <div class="summary-label">Total Bought</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value" style="color: var(--danger);">${formatNumber(totals.total_without_buy, data.token_type)}</div>
+                        <div class="summary-value" style="color: var(--danger);">${formatNumber(totals.total_without_buy)}</div>
                         <div class="summary-label">⚠️ Transferred Without Purchase</div>
                     </div>
                 </div>
@@ -424,8 +398,6 @@ function displayPhishyResult(data) {
         ${phishyListHTML}
         ${topHoldersHTML}
     `;
-    // Refresh recent phishy list after showing results
-    setTimeout(loadRecentPhishy, 500);
 }
 
 function showError(message) {
@@ -437,14 +409,24 @@ function showError(message) {
     `;
 }
 
+function showInfoMessage(message) {
+    resultSection.style.display = 'block';
+    resultContent.innerHTML = `
+        <div style="background: var(--bg-secondary); border: 1px solid var(--accent-primary); border-radius: 8px; padding: 20px; text-align: center;">
+            <div style="color: var(--accent-primary); font-size: 1.2rem; margin-bottom: 8px;">ℹ️</div>
+            <div style="color: var(--text-primary); font-size: 1rem; font-weight: 500;">${message}</div>
+        </div>
+    `;
+}
+
 // Store current token type for formatting
-let currentTokenType = 'fourmeme';
+let currentTokenType = 'pumpfun';
 
 function formatNumber(num) {
     if (!num || num === 0) return '0';
     const n = typeof num === 'string' ? parseFloat(num) : num;
     
-    // Pump.fun amounts are already decimal-adjusted, BSC amounts need conversion
+    // Pump.fun amounts are already decimal-adjusted
     if (currentTokenType === 'pumpfun') {
         // Pump.fun: amounts are already in tokens, just format
         if (n >= 1000000000) {
@@ -457,7 +439,7 @@ function formatNumber(num) {
             return n.toLocaleString('en-US', { maximumFractionDigits: 4 });
         }
     } else {
-        // BSC/Four.Meme: amounts are in smallest unit (18 decimals)
+        // Pump.fun amounts are already decimal-adjusted
         const DECIMALS = 18;
         const divisor = Math.pow(10, DECIMALS);
         
@@ -502,106 +484,4 @@ function formatTimestamp(ts) {
     }
 }
 
-async function loadRecentPhishy() {
-    try {
-        const response = await fetch('/api/recent-phishy');
-        const data = await response.json();
-        
-        if (data.success && data.tokens.length > 0) {
-            displayRecentPhishy(data.tokens);
-        }
-    } catch (error) {
-        console.error('Failed to load recent phishy tokens:', error);
-    }
-}
-
-function displayRecentPhishy(tokens) {
-    const container = document.getElementById('recentTokensContainer');
-    if (!container) return;
-    
-    if (tokens.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; color: var(--text-secondary); padding: 20px; grid-column: 1 / -1;">
-                No phishy tokens found yet. Search for tokens to see results here.
-            </div>
-        `;
-        return;
-    }
-    
-    let recentHTML = '';
-    
-    tokens.slice(0, 10).forEach((token) => {
-        const timeAgo = getTimeAgo(token.timestamp);
-        const tokenType = token.token_type === 'pumpfun' ? 'Pump.fun' : 'Four.Meme';
-        // Set token type for formatting
-        const prevTokenType = currentTokenType;
-        currentTokenType = token.token_type || 'fourmeme';
-        
-        recentHTML += `
-            <div class="recent-token-card" onclick="checkToken('${token.token_address}')" style="cursor: pointer;">
-                <div class="recent-token-header">
-                    <span class="address" style="font-size: 0.85rem;">${token.token_address}</span>
-                    <span style="color: var(--danger); font-weight: 700; font-size: 0.9rem;">⚠️ ${token.phishy_count} Phishy</span>
-                </div>
-                <div style="color: var(--accent-primary); font-size: 0.75rem; margin-bottom: 4px;">
-                    ${tokenType}
-                </div>
-                ${token.totals ? `
-                    <div class="recent-token-details">
-                        <div style="color: var(--text-secondary); font-size: 0.85rem;">
-                            Without Buy: <span style="color: var(--danger); font-weight: 600;">${formatNumber(token.totals.total_without_buy)}</span>
-                        </div>
-                    </div>
-                ` : ''}
-                <div style="color: var(--text-secondary); font-size: 0.75rem; margin-top: 8px;">
-                    ${timeAgo}
-                </div>
-            </div>
-        `;
-        
-        // Restore previous token type
-        currentTokenType = prevTokenType;
-    });
-    
-    container.innerHTML = recentHTML;
-    
-    // Update count in header
-    const header = document.querySelector('#recentPhishySection h3 span:last-child');
-    if (header) {
-        header.textContent = `Recently Searched Phishy Tokens (${tokens.length})`;
-    }
-}
-
-function checkToken(address) {
-    // Prevent if already checking
-    if (isChecking) {
-        return;
-    }
-    tokenAddressInput.value = address;
-    handleCheck();
-}
-
-function getTimeAgo(timestamp) {
-    try {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffMs = now - date;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-        
-        if (diffMins < 1) return 'Just now';
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString();
-    } catch {
-        return 'Unknown';
-    }
-}
-
-// Load recent phishy tokens on page load
-document.addEventListener('DOMContentLoaded', () => {
-    loadRecentPhishy();
-});
 
