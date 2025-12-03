@@ -314,6 +314,376 @@ def analyze_phishy_behavior(transfers: List[Dict], buy_data: Dict[str, Dict]) ->
     return len(phishy_addresses), phishy_addresses
 
 
+def get_top_holders_pumpfun(token_address: str, api_key: str) -> List[Dict]:
+    """
+    Get top 10 holders of a Pump.fun token.
+    
+    Args:
+        token_address: The token mint address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        List of holder information with address and holding amount
+    """
+    query = """
+    query MyQuery($token: String) {
+      Solana {
+        BalanceUpdates(
+          limit: { count: 10 }
+          orderBy: { descendingByField: "BalanceUpdate_Holding_maximum" }
+          where: {
+            BalanceUpdate: { Currency: { MintAddress: { is: $token } } }
+            Transaction: { Result: { Success: true } }
+          }
+        ) {
+          BalanceUpdate {
+            Currency {
+              Name
+              MintAddress
+              Symbol
+            }
+            Account {
+              Token {
+                Owner
+              }
+            }
+            Holding: PostBalance(maximum: Block_Slot, selectWhere: {ne: "0"})
+          }
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "token": token_address
+    }
+    
+    print(f"Fetching top 10 holders for token: {token_address}")
+    response = make_graphql_request(query, variables, api_key)
+    
+    holders = []
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                balance_updates = solana_data[0].get("BalanceUpdates", [])
+            elif isinstance(solana_data, dict):
+                balance_updates = solana_data.get("BalanceUpdates", [])
+            else:
+                balance_updates = []
+            
+            for update in balance_updates:
+                owner = update["BalanceUpdate"]["Account"]["Token"]["Owner"]
+                holding = update["BalanceUpdate"].get("Holding", 0)
+                holders.append({
+                    "address": owner,
+                    "holding": holding
+                })
+    
+    return holders
+
+
+def get_trades_count_last_6h(address: str, api_key: str) -> int:
+    """
+    Get count of trades in last 6 hours for an address.
+    
+    Args:
+        address: The wallet address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Count of trades in last 6 hours
+    """
+    query = """
+    query MyQuery($trader: String) {
+      Solana(dataset: realtime) {
+        DEXTradeByTokens(
+          where: {
+            Block: { Time: { since_relative: { hours_ago: 6 } } }
+            Trade: {
+              Side: {
+                Currency: {
+                  MintAddress: {
+                    in: [
+                      "So11111111111111111111111111111111111111112",
+                      "11111111111111111111111111111111"
+                    ]
+                  }
+                }
+              }
+            }
+            any: [
+              { Trade: { Account: { Address: { is: $trader } } } }
+              { Trade: { Account: { Token: { Owner: { is: $trader } } } } }
+            ]
+          }
+        ) {
+          count
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "trader": address
+    }
+    
+    response = make_graphql_request(query, variables, api_key)
+    
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                trades = solana_data[0].get("DEXTradeByTokens", [])
+            elif isinstance(solana_data, dict):
+                trades = solana_data.get("DEXTradeByTokens", [])
+            else:
+                trades = []
+            
+            if trades and len(trades) > 0:
+                return trades[0].get("count", 0)
+    
+    return 0
+
+
+def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]:
+    """
+    Get the bonding curve address for a Pump.fun token by querying the create instruction.
+    The bonding curve is the 3rd account in the Instruction accounts array.
+    
+    Args:
+        token_address: The token mint address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Bonding curve address or None if not found
+    """
+    query = """
+    query MyQuery($token: String) {
+  Solana {
+    Instructions(
+      where: {Instruction: {Program: {Address: {is: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"}, Method: {in: ["create", "create_v2"]}}, Accounts: {includes: {Address: {is: $token}}}}, Transaction: {Result: {Success: true}}}
+    ) {
+      Instruction {
+        Accounts {
+          Address
+        }
+        Program {
+          AccountNames
+          Method
+          Arguments {
+            Name
+            Type
+            Value {
+              ... on Solana_ABI_Integer_Value_Arg {
+                integer
+              }
+              ... on Solana_ABI_String_Value_Arg {
+                string
+              }
+              ... on Solana_ABI_Address_Value_Arg {
+                address
+              }
+              ... on Solana_ABI_BigInt_Value_Arg {
+                bigInteger
+              }
+              ... on Solana_ABI_Bytes_Value_Arg {
+                hex
+              }
+              ... on Solana_ABI_Boolean_Value_Arg {
+                bool
+              }
+              ... on Solana_ABI_Float_Value_Arg {
+                float
+              }
+              ... on Solana_ABI_Json_Value_Arg {
+                json
+              }
+            }
+          }
+        }
+      }
+      Transaction {
+        Signature
+      }
+    }
+  }
+}
+
+    """
+    
+    variables = {
+        "token": token_address
+    }
+    
+    print(f"Finding bonding curve address for token: {token_address}")
+    response = make_graphql_request(query, variables, api_key)
+    
+    # Check for errors first
+    if "errors" in response:
+        print("Warning: GraphQL errors occurred while finding bonding curve")
+        return None
+    
+    # Extract bonding curve address (3rd account in accounts array, index 2)
+    if "data" in response and response["data"] is not None:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                instructions = solana_data[0].get("Instructions", [])
+            elif isinstance(solana_data, dict):
+                instructions = solana_data.get("Instructions", [])
+            else:
+                instructions = []
+            
+            # Filter instructions by method and find bonding curve
+            for instruction_item in instructions:
+                instruction_data = instruction_item.get("Instruction")
+                if instruction_data:
+                    program_data = instruction_data.get("Program", {})
+                    method = program_data.get("Method", "")
+                    # Filter by method (create or create_v2)
+                    if method in ["create", "create_v2"]:
+                        accounts = instruction_data.get("Accounts", [])
+                        if len(accounts) >= 3:
+                            bonding_curve = accounts[2].get("Address")
+                            if bonding_curve:
+                                print(f"Found bonding curve address: {bonding_curve}")
+                                return bonding_curve
+    
+    print("Warning: Could not find bonding curve address")
+    return None
+
+
+
+
+def get_pump_tokens_count(address: str, api_key: str) -> int:
+    """
+    Get count of pump tokens held by an address.
+    
+    Args:
+        address: The wallet address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Count of pump tokens held (with balance > 0)
+    """
+    query = """
+    query MyQuery($address: String) {
+      Solana {
+        BalanceUpdates(
+          where: {
+            BalanceUpdate: {
+              Account: { Owner: { is: $address } }
+              Currency: { MintAddress: { endsWith: "pump" } }
+            }
+          }
+          orderBy: { descendingByField: "BalanceUpdate_Balance_maximum" }
+        ) {
+          BalanceUpdate {
+            Balance: PostBalance(maximum: Block_Slot)
+            Currency {
+              Name
+              Symbol
+              MintAddress
+            }
+          }
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "address": address
+    }
+    
+    response = make_graphql_request(query, variables, api_key)
+    
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                balance_updates = solana_data[0].get("BalanceUpdates", [])
+            elif isinstance(solana_data, dict):
+                balance_updates = solana_data.get("BalanceUpdates", [])
+            else:
+                balance_updates = []
+            
+            # Count unique pump tokens with balance > 0
+            unique_tokens = set()
+            for update in balance_updates:
+                mint_address = update["BalanceUpdate"]["Currency"]["MintAddress"]
+                balance = float(update["BalanceUpdate"].get("Balance", 0) or 0)
+                if balance > 0:
+                    unique_tokens.add(mint_address)
+            
+            return len(unique_tokens)
+    
+    return 0
+
+
+def get_trades_count_last_6h(address: str, api_key: str) -> int:
+    """
+    Get count of trades in last 6 hours for an address.
+    
+    Args:
+        address: The wallet address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Count of trades in last 6 hours
+    """
+    query = """
+    query MyQuery($trader: String) {
+      Solana(dataset: realtime) {
+        DEXTradeByTokens(
+          where: {
+            Block: { Time: { since_relative: { hours_ago: 6 } } }
+            Trade: {
+              Side: {
+                Currency: {
+                  MintAddress: {
+                    in: [
+                      "So11111111111111111111111111111111111111112",
+                      "11111111111111111111111111111111"
+                    ]
+                  }
+                }
+              }
+            }
+            any: [
+              { Trade: { Account: { Address: { is: $trader } } } }
+              { Trade: { Account: { Token: { Owner: { is: $trader } } } } }
+            ]
+          }
+        ) {
+          count
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "trader": address
+    }
+    
+    response = make_graphql_request(query, variables, api_key)
+    
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                trades = solana_data[0].get("DEXTradeByTokens", [])
+            elif isinstance(solana_data, dict):
+                trades = solana_data.get("DEXTradeByTokens", [])
+            else:
+                trades = []
+            
+            if trades and len(trades) > 0:
+                return trades[0].get("count", 0)
+    
+    return 0
+
+
 def get_first_transfers_pumpfun(token_address: str, bonding_curve: str, api_key: str) -> List[Dict]:
     """
     Query 1: Get the first transfers of a Pump.fun token to addresses (Solana).

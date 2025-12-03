@@ -1,11 +1,81 @@
 const checkButton = document.getElementById('checkButton');
 const tokenAddressInput = document.getElementById('tokenAddress');
-const bondingCurveInput = document.getElementById('bondingCurve');
-const bondingCurveLabel = document.getElementById('bondingCurveLabel');
 const resultSection = document.getElementById('resultSection');
 const resultContent = document.getElementById('resultContent');
 const cancelButton = document.getElementById('cancelButton');
 const btnProgress = document.getElementById('btnProgress');
+
+// Helper function to create address with link and copy functionality
+function formatAddressWithLink(address, isSolana = false) {
+    const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
+    const fullAddress = address;
+    const addressId = `addr-${address.replace(/[^a-zA-Z0-9]/g, '-')}`;
+    
+    // Create dexrabbit link for Solana addresses
+    const dexrabbitLink = isSolana ? `https://dexrabbit.com/solana/trader/${address}` : null;
+    
+    if (dexrabbitLink) {
+        return `
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+                <a href="${dexrabbitLink}" target="_blank" rel="noopener noreferrer" 
+                   style="color: var(--accent-primary); text-decoration: none; font-weight: 500;"
+                   onmouseover="this.style.textDecoration='underline'" 
+                   onmouseout="this.style.textDecoration='none'"
+                   title="View on DEXrabbit: ${fullAddress}">
+                    ${shortAddress}
+                </a>
+                <button class="copy-address-btn" 
+                        data-address="${fullAddress.replace(/"/g, '&quot;')}"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: var(--text-secondary); font-size: 0.75rem; transition: all 0.2s;"
+                        title="Copy full address"
+                        onmouseover="this.style.borderColor='var(--accent-primary)'"
+                        onmouseout="this.style.borderColor='var(--border)'">
+                    📋
+                </button>
+            </span>
+        `;
+    } else {
+        // For BSC or other addresses, just show with copy button
+        return `
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+                <span style="font-weight: 500;">${shortAddress}</span>
+                <button class="copy-address-btn" 
+                        data-address="${fullAddress.replace(/"/g, '&quot;')}"
+                        style="background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: var(--text-secondary); font-size: 0.75rem; transition: all 0.2s;"
+                        title="Copy full address"
+                        onmouseover="this.style.borderColor='var(--accent-primary)'"
+                        onmouseout="this.style.borderColor='var(--border)'">
+                    📋
+                </button>
+            </span>
+        `;
+    }
+}
+
+// Add event delegation for copy buttons
+document.addEventListener('click', function(e) {
+    if (e.target.closest('.copy-address-btn')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const btn = e.target.closest('.copy-address-btn');
+        const address = btn.getAttribute('data-address');
+        if (address) {
+            navigator.clipboard.writeText(address).then(() => {
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✓';
+                btn.style.color = 'var(--accent-primary)';
+                btn.style.borderColor = 'var(--accent-primary)';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }, 1000);
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+            });
+        }
+    }
+});
 
 let abortController = null;
 let progressInterval = null;
@@ -14,38 +84,11 @@ let isChecking = false; // Guard to prevent duplicate calls
 checkButton.addEventListener('click', handleCheck);
 cancelButton.addEventListener('click', handleCancel);
 
-tokenAddressInput.addEventListener('input', handleTokenAddressChange);
 tokenAddressInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         handleCheck();
     }
 });
-
-bondingCurveInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        handleCheck();
-    }
-});
-
-function handleTokenAddressChange() {
-    const tokenAddress = tokenAddressInput.value.trim();
-    const bondingCurveContainer = document.getElementById('bondingCurveContainer');
-    
-    // Check if it's a Solana address (Pump.fun)
-    // Solana addresses: 32-44 characters, don't start with 0x
-    const isSolana = !tokenAddress.startsWith('0x') && tokenAddress.length >= 32 && tokenAddress.length <= 44;
-    
-    if (isSolana && tokenAddress.length > 0) {
-        // Show bonding curve field for Pump.fun
-        bondingCurveContainer.style.display = 'block';
-        bondingCurveInput.required = true;
-    } else {
-        // Hide bonding curve field for BSC or empty
-        bondingCurveContainer.style.display = 'none';
-        bondingCurveInput.required = false;
-        bondingCurveInput.value = '';
-    }
-}
 
 function handleCancel() {
     if (abortController) {
@@ -62,7 +105,6 @@ async function handleCheck() {
     }
     
     const tokenAddress = tokenAddressInput.value.trim();
-    const bondingCurve = bondingCurveInput.value.trim();
     
     if (!tokenAddress) {
         showError('Please enter a token address');
@@ -80,12 +122,6 @@ async function handleCheck() {
         return;
     }
     
-    // For Solana/Pump.fun, bonding curve is required
-    if (isSolana && !bondingCurve) {
-        showError('Bonding curve address is required for Pump.fun tokens');
-        return;
-    }
-    
     isChecking = true;
     setLoading(true);
     resultSection.style.display = 'none';
@@ -97,21 +133,14 @@ async function handleCheck() {
     startProgress();
     
     try {
-        const payload = {
-            token_address: tokenAddress
-        };
-        
-        // Add bonding curve for Pump.fun tokens
-        if (isSolana) {
-            payload.bonding_curve = bondingCurve;
-        }
-        
         const response = await fetch('/api/check', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+                token_address: tokenAddress
+            }),
             signal: abortController.signal
         });
         
@@ -204,6 +233,48 @@ function displayResults(data) {
 }
 
 function displaySafeResult(data) {
+    const { top_holders, bonding_curve } = data.data || {};
+    
+    // Top holders section for Pump.fun tokens
+    let topHoldersHTML = '';
+    if (data.token_type === 'pumpfun' && top_holders && top_holders.length > 0) {
+        topHoldersHTML = `
+            <div class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
+                <h3 style="margin-bottom: 20px; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--border);">
+                                <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">#</th>
+                                <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Address</th>
+                                <th style="text-align: right; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Total Pump.Fun tokens held</th>
+                                <th style="text-align: right; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Total trades (last 6h)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${top_holders.map((holder, index) => {
+                                const isBondingCurve = bonding_curve && holder.address === bonding_curve;
+                                return `
+                                    <tr style="border-bottom: 1px solid var(--border);">
+                                        <td style="padding: 12px; color: var(--text-primary); font-weight: 600;">#${index + 1}</td>
+                                        <td style="padding: 12px; color: var(--text-primary);">
+                                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                                ${formatAddressWithLink(holder.address, true)}
+                                                ${isBondingCurve ? '<span style="background: var(--accent-primary); color: var(--bg-primary); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Bonding Curve</span>' : ''}
+                                            </div>
+                                        </td>
+                                        <td style="padding: 12px; text-align: right; color: var(--text-primary);">${holder.pump_tokens_count || 0}</td>
+                                        <td style="padding: 12px; text-align: right; color: var(--text-primary);">${holder.trades_6h || 0}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
     const tokenTypeLabel = data.token_type === 'pumpfun' ? 'Pump.fun' : 'Four.Meme';
     resultContent.innerHTML = `
         <div class="result-header safe">
@@ -215,13 +286,14 @@ function displaySafeResult(data) {
                 </div>
             </div>
         </div>
+        ${topHoldersHTML}
     `;
     // Refresh recent phishy list
     setTimeout(loadRecentPhishy, 500);
 }
 
 function displayPhishyResult(data) {
-    const { phishy_addresses, totals } = data.data;
+    const { phishy_addresses, totals, top_holders } = data.data;
     
     let phishyListHTML = '';
     
@@ -229,15 +301,16 @@ function displayPhishyResult(data) {
         phishyListHTML = '<div class="phishy-list"><h3 style="margin-bottom: 20px; color: var(--danger);">⚠️ Suspicious Addresses</h3>';
         
         phishy_addresses.forEach((addr, index) => {
-            const transferred = formatNumber(addr.total_transferred || 0);
-            const bought = formatNumber(addr.total_bought || 0);
-            const withoutBuy = formatNumber(addr.transferred_without_buy || 0);
+            const transferred = formatNumber(addr.total_transferred || 0, data.token_type);
+            const bought = formatNumber(addr.total_bought || 0, data.token_type);
+            const withoutBuy = formatNumber(addr.transferred_without_buy || 0, data.token_type);
             
+            const isSolanaAddr = !addr.address.startsWith('0x') && addr.address.length >= 32;
             phishyListHTML += `
                 <div class="phishy-item">
                     <div class="phishy-item-header">
                         <span style="color: var(--danger); font-weight: 700;">#${index + 1}</span>
-                        <span class="address">${addr.address}</span>
+                        <span class="address">${formatAddressWithLink(addr.address, isSolanaAddr)}</span>
                     </div>
                     <div class="phishy-details">
                         <div class="detail-item">
@@ -268,6 +341,47 @@ function displayPhishyResult(data) {
         phishyListHTML += '</div>';
     }
     
+    // Top holders section for Pump.fun tokens
+    let topHoldersHTML = '';
+    if (data.token_type === 'pumpfun' && top_holders && top_holders.length > 0) {
+        const { bonding_curve } = data.data || {};
+        topHoldersHTML = `
+            <div class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
+                <h3 style="margin-bottom: 20px; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--border);">
+                                <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">#</th>
+                                <th style="text-align: left; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Address</th>
+                                <th style="text-align: right; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Total Pump.Fun tokens held</th>
+                                <th style="text-align: right; padding: 12px; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem;">Total trades (last 6h)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${top_holders.map((holder, index) => {
+                                const isBondingCurve = bonding_curve && holder.address === bonding_curve;
+                                return `
+                                    <tr style="border-bottom: 1px solid var(--border);">
+                                        <td style="padding: 12px; color: var(--text-primary); font-weight: 600;">#${index + 1}</td>
+                                        <td style="padding: 12px; color: var(--text-primary);">
+                                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                                ${formatAddressWithLink(holder.address, true)}
+                                                ${isBondingCurve ? '<span style="background: var(--accent-primary); color: var(--bg-primary); padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600;">Bonding Curve</span>' : ''}
+                                            </div>
+                                        </td>
+                                        <td style="padding: 12px; text-align: right; color: var(--text-primary);">${holder.pump_tokens_count || 0}</td>
+                                        <td style="padding: 12px; text-align: right; color: var(--text-primary);">${holder.trades_6h || 0}</td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
     const tokenTypeLabel = data.token_type === 'pumpfun' ? 'Pump.fun' : 'Four.Meme';
     resultContent.innerHTML = `
         <div class="result-header phishy">
@@ -293,21 +407,22 @@ function displayPhishyResult(data) {
                 `}
                 <div class="summary-grid">
                     <div class="summary-item">
-                        <div class="summary-value">${formatNumber(totals.total_transferred)}</div>
+                        <div class="summary-value">${formatNumber(totals.total_transferred, data.token_type)}</div>
                         <div class="summary-label">Total Transferred</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value">${formatNumber(totals.total_bought)}</div>
+                        <div class="summary-value">${formatNumber(totals.total_bought, data.token_type)}</div>
                         <div class="summary-label">Total Bought</div>
                     </div>
                     <div class="summary-item">
-                        <div class="summary-value" style="color: var(--danger);">${formatNumber(totals.total_without_buy)}</div>
+                        <div class="summary-value" style="color: var(--danger);">${formatNumber(totals.total_without_buy, data.token_type)}</div>
                         <div class="summary-label">⚠️ Transferred Without Purchase</div>
                     </div>
                 </div>
             </div>
         ` : ''}
         ${phishyListHTML}
+        ${topHoldersHTML}
     `;
     // Refresh recent phishy list after showing results
     setTimeout(loadRecentPhishy, 500);

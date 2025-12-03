@@ -9,7 +9,8 @@ import os
 from dotenv import load_dotenv
 from check_phishy_token import (
     get_first_transfers, get_first_buys, analyze_phishy_behavior,
-    get_first_transfers_pumpfun, get_first_buys_pumpfun, analyze_phishy_behavior_pumpfun
+    get_first_transfers_pumpfun, get_first_buys_pumpfun, analyze_phishy_behavior_pumpfun,
+    get_bonding_curve_address, get_top_holders_pumpfun, get_pump_tokens_count, get_trades_count_last_6h
 )
 from collections import deque
 from datetime import datetime
@@ -88,12 +89,40 @@ def check_token():
         
         # Route to appropriate functions based on token type
         if token_type == 'solana' or token_type == 'pumpfun':
-            # Pump.fun (Solana) token - requires bonding curve address
+            # Pump.fun (Solana) token - automatically find bonding curve
             if not bonding_curve:
-                return jsonify({
-                    'success': False,
-                    'error': 'Bonding curve address is required for Pump.fun tokens'
-                }), 400
+                bonding_curve = get_bonding_curve_address(token_address, API_KEY)
+                if not bonding_curve:
+                    return jsonify({
+                        'success': False,
+                        'error': 'Could not find bonding curve address for this Pump.fun token'
+                    }), 400
+            
+            # Get top 10 holders with their stats
+            top_holders = get_top_holders_pumpfun(token_address, API_KEY)
+            holders_with_stats = []
+            for holder in top_holders:
+                address = holder["address"]
+                pump_tokens = get_pump_tokens_count(address, API_KEY)
+                trades_6h = get_trades_count_last_6h(address, API_KEY)
+                holders_with_stats.append({
+                    "address": address,
+                    "holding": holder["holding"],
+                    "pump_tokens_count": pump_tokens,
+                    "trades_6h": trades_6h
+                })
+            
+            # Print top 10 holders after calculation
+            print("\n" + "="*80)
+            print("TOP 10 HOLDERS (After Calculation):")
+            print("="*80)
+            for i, holder_stat in enumerate(holders_with_stats, 1):
+                print(f"#{i} Address: {holder_stat['address']}")
+                print(f"   Holding: {holder_stat.get('holding', 0)}")
+                print(f"   Pump.Fun tokens held: {holder_stat['pump_tokens_count']}")
+                print(f"   Trades (last 6h): {holder_stat['trades_6h']}")
+                print()
+            print("="*80 + "\n")
             
             transfers = get_first_transfers_pumpfun(token_address, bonding_curve, API_KEY)
             
@@ -106,7 +135,9 @@ def check_token():
                     'data': {
                         'total_addresses': 0,
                         'phishy_count': 0,
-                        'phishy_addresses': []
+                        'phishy_addresses': [],
+                        'top_holders': holders_with_stats,
+                        'bonding_curve': bonding_curve
                     }
                 })
             
@@ -114,6 +145,21 @@ def check_token():
             addresses = [t["Transfer"]["Receiver"]["Token"]["Owner"] for t in transfers]
             buy_data = get_first_buys_pumpfun(token_address, addresses, API_KEY)
             phishy_count, phishy_addresses = analyze_phishy_behavior_pumpfun(transfers, buy_data)
+            
+            # Ensure top holders are fetched (they should already be, but just in case)
+            if not holders_with_stats:
+                top_holders = get_top_holders_pumpfun(token_address, API_KEY)
+                holders_with_stats = []
+                for holder in top_holders:
+                    address = holder["address"]
+                    pump_tokens = get_pump_tokens_count(address, API_KEY)
+                    trades_6h = get_trades_count_last_6h(address, API_KEY)
+                    holders_with_stats.append({
+                        "address": address,
+                        "holding": holder["holding"],
+                        "pump_tokens_count": pump_tokens,
+                        "trades_6h": trades_6h
+                    })
         else:
             # Four.Meme (BSC) token
             transfers = get_first_transfers(token_address, API_KEY)
@@ -148,6 +194,11 @@ def check_token():
                 'phishy_addresses': phishy_addresses
             }
         }
+        
+        # Add top holders for Pump.fun tokens
+        if token_type == 'solana' or token_type == 'pumpfun':
+            result['data']['top_holders'] = holders_with_stats
+            result['data']['bonding_curve'] = bonding_curve  # Include bonding curve address for UI tagging
         
         # Calculate totals
         if phishy_count > 0:
