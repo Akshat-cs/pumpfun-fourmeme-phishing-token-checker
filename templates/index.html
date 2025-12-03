@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishy Token Checker - Four.Meme & Pump.fun</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Phishy Token Checker</h1>
+            <p class="subtitle">Detect suspicious token behavior on BSC & Solana</p>
+        </header>
+
+        <div class="card">
+            <div class="input-section">
+                <label for="tokenAddress">Token Address (BSC or Solana)</label>
+                <input 
+                    type="text" 
+                    id="tokenAddress" 
+                    placeholder="0x... (BSC) or 3Fymji2JPhhbKuCzNPKEyjdEuF9cyFuQ8HksyjRGpump (Pump.fun)"
+                    class="input-field"
+                >
+                <div style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 4px; margin-bottom: 8px;">
+                    Supports: Four.Meme (BSC) and Pump.fun (Solana) tokens
+                </div>
+                
+                <div id="bondingCurveContainer" style="display: none; margin-top: 20px;">
+                    <label for="bondingCurve" id="bondingCurveLabel">
+                        Bonding Curve Address (Required for Pump.fun)
+                    </label>
+                    <input 
+                        type="text" 
+                        id="bondingCurve" 
+                        placeholder="6AMeqEdepfKKmTQAwcMvbrwugcaJaXtt3MsJGy7WdXpk (Pump.fun bonding curve)"
+                        class="input-field"
+                    >
+                </div>
+                
+                <div style="position: relative;">
+                    <button id="checkButton" class="btn-primary">
+                        <span class="btn-progress" id="btnProgress" style="width: 0%;"></span>
+                        <span class="btn-content">
+                            <span class="btn-text">Check Token</span>
+                            <span class="btn-loader" style="display: none;">
+                                <span class="hourglass-icon">⏳</span>
+                                <span>Checking...</span>
+                            </span>
+                        </span>
+                    </button>
+                    <button id="cancelButton" class="cancel-btn" style="display: none;">Cancel</button>
+                </div>
+            </div>
+
+            <div id="resultSection" class="result-section" style="display: none;">
+                <div id="resultContent"></div>
+            </div>
+            
+            <div id="recentPhishySection" class="recent-phishy-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
+                <h3 style="margin-bottom: 20px; color: var(--accent-primary); display: flex; align-items: center; gap: 10px;">
+                    <span>📋</span>
+                    <span>Recently Searched Phishy Tokens</span>
+                </h3>
+                <div id="recentTokensContainer" class="recent-tokens-grid">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 20px;">
+                        Loading recent phishy tokens...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Powered by <a href="https://bitquery.io" target="_blank">Bitquery</a></p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+
