@@ -1,4 +1,4 @@
-# Four.Meme Phishy Token Checker
+# PumpFun & Four.Meme Phishy Token Checker
 
 This script checks if a Four Meme token on BSC (Binance Smart Chain) is potentially phishy by analyzing the relationship between token transfers and purchases.
 
