@@ -9,7 +9,9 @@ import os
 from dotenv import load_dotenv
 from check_phishy_token import (
     get_first_transfers_pumpfun, get_first_buys_pumpfun, analyze_phishy_behavior_pumpfun,
-    get_bonding_curve_address, get_top_holders_pumpfun, get_pump_tokens_count, get_trades_count_last_6h
+    get_bonding_curve_address, get_top_holders_pumpfun, get_pump_tokens_count, get_trades_count_last_6h,
+    analyze_holder_distribution, fetch_ipfs_metadata, MAYHEM_AI_AGENT_ADDRESS, get_liquidity_for_pool,
+    check_token_graduated
 )
 from collections import deque
 from datetime import datetime
@@ -84,25 +86,60 @@ def check_token():
         
         # All tokens are Pump.fun (Solana)
         # Pump.fun token - automatically find bonding curve
+        bonding_curve_data = None
         if not bonding_curve:
-            bonding_curve = get_bonding_curve_address(token_address, API_KEY)
-            if not bonding_curve:
+            bonding_curve_data = get_bonding_curve_address(token_address, API_KEY)
+            if not bonding_curve_data:
                 return jsonify({
                     'success': False,
                     'error': 'We only support tokens created in the last 8 hours',
                     'error_type': 'info'
                 }), 400
             
+            # Extract bonding curve from the returned dict
+            if isinstance(bonding_curve_data, dict):
+                bonding_curve = bonding_curve_data.get("bonding_curve")
+            else:
+                bonding_curve = bonding_curve_data
+        
+        # Check if token has graduated to PumpSwap
+        if bonding_curve:
+            has_graduated = check_token_graduated(token_address, API_KEY)
+            if has_graduated:
+                return jsonify({
+                    'success': False,
+                    'error': 'This Pump.fun token has graduated to PumpSwap. We only support token which are trading on pump fun currently.',
+                    'error_type': 'info'
+                }), 400
+        
+        # Initialize liquidity_sol early
+        liquidity_sol = None
+        
         # Get top 10 holders with their stats
         top_holders = get_top_holders_pumpfun(token_address, API_KEY)
+        
+        # Get is_mayhem_mode from bonding_curve_data if available
+        is_mayhem_mode = False
+        if bonding_curve_data and isinstance(bonding_curve_data, dict):
+            is_mayhem_mode = bonding_curve_data.get('is_mayhem_mode', False)
+        
+        # Calculate total supply based on Mayhem mode
+        total_supply = 2_000_000_000 if is_mayhem_mode else 1_000_000_000
+        
         holders_with_stats = []
         for holder in top_holders:
             address = holder["address"]
             pump_tokens = get_pump_tokens_count(address, API_KEY)
             trades_6h = get_trades_count_last_6h(address, API_KEY)
+            
+            # Calculate percentage holding
+            holding = float(holder.get("holding", 0) or 0)
+            percent_holding = (holding / total_supply) * 100 if total_supply > 0 else 0
+            
             holders_with_stats.append({
                 "address": address,
                 "holding": holder["holding"],
+                "percent_holding": round(percent_holding, 2),
                 "pump_tokens_count": pump_tokens,
                 "trades_6h": trades_6h
             })
@@ -121,6 +158,46 @@ def check_token():
         
         transfers = get_first_transfers_pumpfun(token_address, bonding_curve, API_KEY)
         
+        # Extract token creation info and metadata from bonding_curve_data
+        token_creation_info = {}
+        token_metadata = {}
+        creator_address = None
+        if bonding_curve_data and isinstance(bonding_curve_data, dict):
+            token_creation_info = {
+                'transaction_signature': bonding_curve_data.get('transaction_signature'),
+                'creator_address': bonding_curve_data.get('creator_address'),
+                'creation_time': bonding_curve_data.get('creation_time')
+            }
+            creator_address = bonding_curve_data.get('creator_address')
+            
+            # Extract token metadata
+            token_uri = bonding_curve_data.get('token_uri')
+            token_metadata = {
+                'name': bonding_curve_data.get('token_name'),
+                'symbol': bonding_curve_data.get('token_symbol'),
+                'is_mayhem_mode': bonding_curve_data.get('is_mayhem_mode', False),
+                'uri': token_uri
+            }
+            
+            # Fetch IPFS metadata if URI is available
+            if token_uri:
+                ipfs_metadata = fetch_ipfs_metadata(token_uri)
+                if ipfs_metadata:
+                    token_metadata['image'] = ipfs_metadata.get('image')
+                    token_metadata['twitter'] = ipfs_metadata.get('twitter')
+                    token_metadata['website'] = ipfs_metadata.get('website')
+                    token_metadata['description'] = ipfs_metadata.get('description', '')
+                    token_metadata['telegram'] = ipfs_metadata.get('telegram')
+        
+        # Get liquidity for the pool (if not already fetched)
+        if bonding_curve and liquidity_sol is None:
+            liquidity_sol = get_liquidity_for_pool(bonding_curve, API_KEY)
+        
+        # Get holder analysis
+        holder_analysis = analyze_holder_distribution(
+            token_address, creator_address, bonding_curve, is_mayhem_mode, API_KEY
+        )
+        
         if not transfers:
             return jsonify({
                 'success': True,
@@ -132,7 +209,12 @@ def check_token():
                     'phishy_count': 0,
                     'phishy_addresses': [],
                     'top_holders': holders_with_stats,
-                    'bonding_curve': bonding_curve
+                    'bonding_curve': bonding_curve,
+                    'mayhem_ai_agent': MAYHEM_AI_AGENT_ADDRESS,
+                    'token_creation': token_creation_info,
+                    'token_metadata': token_metadata,
+                    'holder_analysis': holder_analysis,
+                    'liquidity_sol': liquidity_sol
                 }
             })
         
@@ -168,7 +250,12 @@ def check_token():
                 'normal_count': len(transfers) - phishy_count,
                 'phishy_addresses': phishy_addresses,
                 'top_holders': holders_with_stats,
-                'bonding_curve': bonding_curve
+                'bonding_curve': bonding_curve,
+                'mayhem_ai_agent': MAYHEM_AI_AGENT_ADDRESS,
+                'token_creation': token_creation_info,
+                'token_metadata': token_metadata,
+                'holder_analysis': holder_analysis,
+                'liquidity_sol': liquidity_sol
             }
         }
         

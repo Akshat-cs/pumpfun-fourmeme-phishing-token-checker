@@ -76,31 +76,29 @@ def get_top_holders_pumpfun(token_address: str, api_key: str) -> List[Dict]:
     """
     query = """
     query MyQuery($token: String) {
-      Solana {
-        BalanceUpdates(
-          limit: { count: 10 }
-          orderBy: { descendingByField: "BalanceUpdate_Holding_maximum" }
-          where: {
-            BalanceUpdate: { Currency: { MintAddress: { is: $token } } }
-            Transaction: { Result: { Success: true } }
-          }
-        ) {
-          BalanceUpdate {
-            Currency {
-              Name
-              MintAddress
-              Symbol
-            }
-            Account {
-              Token {
-                Owner
-              }
-            }
-            Holding: PostBalance(maximum: Block_Slot, selectWhere: {ne: "0"})
+  Solana {
+    BalanceUpdates(
+      limit: {count: 10}
+      orderBy: {descendingByField: "BalanceUpdate_Holding_maximum"}
+      where: {BalanceUpdate: {Currency: {MintAddress: {is: $token}}}, Transaction: {Result: {Success: true}}}
+    ) {
+      BalanceUpdate {
+        Currency {
+          Name
+          MintAddress
+          Symbol
+        }
+        Account {
+          Token {
+            Owner
           }
         }
+        Holding: PostBalance(maximum: Block_Slot, selectWhere: {ne: "0"})
       }
     }
+  }
+}
+
     """
     
     variables = {
@@ -124,12 +122,112 @@ def get_top_holders_pumpfun(token_address: str, api_key: str) -> List[Dict]:
             for update in balance_updates:
                 owner = update["BalanceUpdate"]["Account"]["Token"]["Owner"]
                 holding = update["BalanceUpdate"].get("Holding", 0)
+                percent_holding = update.get("percent_holding", 0)
                 holders.append({
                     "address": owner,
-                    "holding": holding
+                    "holding": holding,
+                    "percent_holding": float(percent_holding) if percent_holding else 0
                 })
     
     return holders
+
+
+# Mayhem mode AI agent address
+MAYHEM_AI_AGENT_ADDRESS = "BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s"
+
+def analyze_holder_distribution(token_address: str, creator_address: Optional[str], 
+                                bonding_curve: Optional[str], is_mayhem_mode: bool, api_key: str) -> Dict:
+    """
+    Analyze holder distribution for a token using top 10 holders only.
+    
+    Args:
+        token_address: The token mint address
+        creator_address: The creator's address
+        bonding_curve: The bonding curve address (to exclude)
+        is_mayhem_mode: Whether the token is in Mayhem mode
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Dictionary with analysis results:
+        - creator_percent: Creator's holding percentage (if in top 10)
+        - creator_check_passed: True if creator holds < 5% or not in top 10
+        - other_holders_check_passed: True if all other holders in top 10 hold < 5%
+        - top10_percent: Top 10 holders' total percentage (excluding bonding curve and Mayhem AI agent)
+        - top10_check_passed: True if top 10 hold < 70%
+        - failed_holder: Address of holder that failed the check (if any)
+    """
+    top_holders = get_top_holders_pumpfun(token_address, api_key)
+    
+    if not top_holders:
+        return {
+            "creator_percent": 0,
+            "creator_check_passed": True,
+            "other_holders_check_passed": True,
+            "top10_percent": 0,
+            "top10_check_passed": True,
+            "failed_holder": None,
+            "error": "Could not fetch holders"
+        }
+    
+    # Calculate total supply based on Mayhem mode
+    # Non-mayhem tokens: 1 Billion, Mayhem tokens: 2 Billion
+    total_supply = 2_000_000_000 if is_mayhem_mode else 1_000_000_000
+    
+    # Calculate percentage holding for each holder and filter out bonding curve and Mayhem AI agent
+    holders_with_percent = []
+    for holder in top_holders:
+        address = holder["address"]
+        # Skip bonding curve and Mayhem AI agent
+        if bonding_curve and address == bonding_curve:
+            continue
+        if address == MAYHEM_AI_AGENT_ADDRESS:
+            continue
+        
+        holding = float(holder.get("holding", 0) or 0)
+        percent_holding = (holding / total_supply) * 100 if total_supply > 0 else 0
+        
+        holders_with_percent.append({
+            "address": address,
+            "holding": holding,
+            "percent_holding": percent_holding
+        })
+    
+    # Check if creator is in top 10
+    creator_percent = 0
+    creator_in_top10 = False
+    if creator_address:
+        for holder in holders_with_percent:
+            if holder["address"] == creator_address:
+                creator_percent = holder["percent_holding"]
+                creator_in_top10 = True
+                break
+    
+    # Creator check: passes if not in top 10 OR if in top 10 but holds < 5%
+    creator_check_passed = not creator_in_top10 or creator_percent < 5.0
+    
+    # Check if any other holder in top 10 (excluding creator, bonding curve, and Mayhem AI agent) holds >= 5%
+    other_holders_check_passed = True
+    failed_holder = None
+    for holder in holders_with_percent:
+        if creator_address and holder["address"] == creator_address:
+            continue
+        if holder["percent_holding"] >= 5.0:
+            other_holders_check_passed = False
+            failed_holder = holder["address"]
+            break
+    
+    # Calculate top 10 holders' total percentage (excluding bonding curve and Mayhem AI agent)
+    top10_percent = sum(h["percent_holding"] for h in holders_with_percent)
+    top10_check_passed = top10_percent < 70.0
+    
+    return {
+        "creator_percent": round(creator_percent, 2),
+        "creator_check_passed": creator_check_passed,
+        "other_holders_check_passed": other_holders_check_passed,
+        "top10_percent": round(top10_percent, 2),
+        "top10_check_passed": top10_check_passed,
+        "failed_holder": failed_holder
+    }
 
 
 def get_trades_count_last_6h(address: str, api_key: str) -> int:
@@ -195,7 +293,7 @@ def get_trades_count_last_6h(address: str, api_key: str) -> int:
     return 0
 
 
-def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]:
+def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[Dict]:
     """
     Get the bonding curve address for a Pump.fun token by querying the create instruction.
     The bonding curve is the 3rd account in the Instruction accounts array.
@@ -205,7 +303,8 @@ def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]
         api_key: API key for authentication (required)
     
     Returns:
-        Bonding curve address or None if not found
+        Dictionary with bonding_curve, transaction_signature, creator_address, and creation_time,
+        or None if not found
     """
     query = """
     query MyQuery($token: String) {
@@ -213,6 +312,9 @@ def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]
     Instructions(
       where: {Instruction: {Program: {Address: {is: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"}, Method: {in: ["create", "create_v2"]}}, Accounts: {includes: {Address: {is: $token}}}}, Transaction: {Result: {Success: true}}}
     ) {
+    Block{
+    Creation_time:Time
+    }
       Instruction {
         Accounts {
           Address
@@ -253,7 +355,8 @@ def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]
         }
       }
       Transaction {
-        Signature
+        Creation_transaction:Signature
+        DevAddress:Signer
       }
     }
   }
@@ -296,10 +399,262 @@ def get_bonding_curve_address(token_address: str, api_key: str) -> Optional[str]
                         if len(accounts) >= 3:
                             bonding_curve = accounts[2].get("Address")
                             if bonding_curve:
+                                # Extract transaction and creator info
+                                transaction_data = instruction_item.get("Transaction", {})
+                                transaction_signature = transaction_data.get("Creation_transaction")
+                                creator_address = transaction_data.get("DevAddress")
+                                
+                                # Extract creation time
+                                block_data = instruction_item.get("Block", {})
+                                creation_time = block_data.get("Creation_time")
+                                
+                                # Extract token metadata from Arguments
+                                arguments = program_data.get("Arguments", [])
+                                token_name = None
+                                token_symbol = None
+                                token_uri = None
+                                is_mayhem_mode = False
+                                
+                                for arg in arguments:
+                                    arg_name = arg.get("Name", "")
+                                    arg_value = arg.get("Value", {})
+                                    
+                                    if arg_name == "name" and "string" in arg_value:
+                                        token_name = arg_value.get("string")
+                                    elif arg_name == "symbol" and "string" in arg_value:
+                                        token_symbol = arg_value.get("string")
+                                    elif arg_name == "uri" and "string" in arg_value:
+                                        token_uri = arg_value.get("string")
+                                    elif arg_name == "is_mayhem_mode" and "bool" in arg_value:
+                                        is_mayhem_mode = arg_value.get("bool", False)
+                                
                                 print(f"Found bonding curve address: {bonding_curve}")
-                                return bonding_curve
+                                return {
+                                    "bonding_curve": bonding_curve,
+                                    "transaction_signature": transaction_signature,
+                                    "creator_address": creator_address,
+                                    "creation_time": creation_time,
+                                    "token_name": token_name,
+                                    "token_symbol": token_symbol,
+                                    "token_uri": token_uri,
+                                    "is_mayhem_mode": is_mayhem_mode
+                                }
     
     print("Warning: Could not find bonding curve address")
+    return None
+
+
+def fetch_ipfs_metadata(uri: Optional[str]) -> Optional[Dict]:
+    """
+    Fetch metadata from IPFS URI.
+    
+    Args:
+        uri: IPFS URI (e.g., https://ipfs.io/ipfs/...)
+    
+    Returns:
+        Dictionary with metadata (image, twitter, website, telegram, description, etc.) or None if failed
+    """
+    if not uri:
+        return None
+    
+    try:
+        response = requests.get(uri, timeout=10)
+        response.raise_for_status()
+        metadata = response.json()
+        return metadata
+    except Exception as e:
+        print(f"Warning: Failed to fetch IPFS metadata from {uri}: {e}")
+        return None
+
+
+def check_token_graduated(token_address: str, api_key: str) -> bool:
+    """
+    Check if a Pump.fun token has graduated to PumpSwap.
+    
+    Args:
+        token_address: The token mint address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        True if token has graduated (Migrate instruction found), False otherwise
+    """
+    query = """
+    query($token:String){
+      Solana {
+        Instructions(
+          where: {Instruction: {Accounts:{includes:{Address:{is:$token}}} Program: {Address: {is: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"}}, Logs: {includes: {includes: "Migrate"}}}, Transaction: {Result: {Success: true}}}
+        ) {
+          Migrate_Time: Block {
+            Time
+          }
+          Instruction {
+            Program {
+              Name
+              Method
+              Arguments {
+                Name
+                Value {
+                  ... on Solana_ABI_Json_Value_Arg {
+                    json
+                  }
+                  ... on Solana_ABI_Float_Value_Arg {
+                    float
+                  }
+                  ... on Solana_ABI_Boolean_Value_Arg {
+                    bool
+                  }
+                  ... on Solana_ABI_Bytes_Value_Arg {
+                    hex
+                  }
+                  ... on Solana_ABI_BigInt_Value_Arg {
+                    bigInteger
+                  }
+                  ... on Solana_ABI_Address_Value_Arg {
+                    address
+                  }
+                  ... on Solana_ABI_String_Value_Arg {
+                    string
+                  }
+                  ... on Solana_ABI_Integer_Value_Arg {
+                    integer
+                  }
+                }
+              }
+              Address
+              AccountNames
+            }
+            Accounts {
+              Token {
+                ProgramId
+                Owner
+                Mint
+              }
+              IsWritable
+              Address
+            }
+          }
+          Transaction {
+            Signature
+          }
+          joinInstructions(
+            join: any_inner
+            Transaction_Index:Transaction_Index
+            Transaction_Signature: Transaction_Signature
+            where: {Instruction: {Program: {Address: {is: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"}, Method: {is: "create_pool"}}}}
+          ) {
+            Instruction {
+              Program {
+                Name
+                Method
+                Arguments {
+                  Value {
+                    ... on Solana_ABI_Address_Value_Arg {
+                      address
+                    }
+                    ... on Solana_ABI_String_Value_Arg {
+                      string
+                    }
+                  }
+                  Type
+                  Name
+                }
+                AccountNames
+              }
+              Accounts {
+                Address
+                Token {
+                  Owner
+                  Mint
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "token": token_address
+    }
+    
+    print(f"Checking if token has graduated: {token_address}")
+    response = make_graphql_request(query, variables, api_key)
+    
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                instructions = solana_data[0].get("Instructions", [])
+            elif isinstance(solana_data, dict):
+                instructions = solana_data.get("Instructions", [])
+            else:
+                instructions = []
+            
+            # If any instructions are returned, token has graduated
+            if instructions and len(instructions) > 0:
+                return True
+    
+    return False
+
+
+def get_liquidity_for_pool(bonding_curve: str, api_key: str) -> Optional[float]:
+    """
+    Get latest liquidity for a bonding curve pool.
+    
+    Args:
+        bonding_curve: The bonding curve address
+        api_key: API key for authentication (required)
+    
+    Returns:
+        Liquidity amount in SOL (float) or None if not found
+    """
+    query = """
+    query GetLatestLiquidityForPool($bondingcurve: String) {
+      Solana(dataset: realtime) {
+        DEXPools(
+          where: {Pool: {Market: {MarketAddress: {is: $bondingcurve}}}, Transaction: {Result: {Success: true}}}
+          orderBy: {descending: Block_Slot}
+          limit: {count: 1}
+        ) {
+          Pool {
+            Quote {
+              Liquidity:PostAmount
+            }
+          }
+        }
+      }
+    }
+    """
+    
+    variables = {
+        "bondingcurve": bonding_curve
+    }
+    
+    print(f"Fetching liquidity for bonding curve: {bonding_curve}")
+    response = make_graphql_request(query, variables, api_key)
+    
+    if "data" in response:
+        solana_data = response["data"].get("Solana")
+        if solana_data:
+            if isinstance(solana_data, list) and len(solana_data) > 0:
+                dex_pools = solana_data[0].get("DEXPools", [])
+            elif isinstance(solana_data, dict):
+                dex_pools = solana_data.get("DEXPools", [])
+            else:
+                dex_pools = []
+            
+            if dex_pools and len(dex_pools) > 0:
+                pool = dex_pools[0].get("Pool", {})
+                quote = pool.get("Quote", {})
+                liquidity_str = quote.get("Liquidity")
+                if liquidity_str:
+                    try:
+                        liquidity = float(liquidity_str)
+                        return liquidity
+                    except (ValueError, TypeError):
+                        pass
+    
     return None
 
 
@@ -318,27 +673,24 @@ def get_pump_tokens_count(address: str, api_key: str) -> int:
     """
     query = """
     query MyQuery($address: String) {
-      Solana {
-        BalanceUpdates(
-          where: {
-            BalanceUpdate: {
-              Account: { Owner: { is: $address } }
-              Currency: { MintAddress: { endsWith: "pump" } }
-            }
-          }
-          orderBy: { descendingByField: "BalanceUpdate_Balance_maximum" }
-        ) {
-          BalanceUpdate {
-            Balance: PostBalance(maximum: Block_Slot)
-            Currency {
-              Name
-              Symbol
-              MintAddress
-            }
-          }
+  Solana {
+    BalanceUpdates(
+      where: {BalanceUpdate: {Account: {Owner: {is: $address}}, Currency: {UpdateAuthority:{is:"TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM"}}}}
+      orderBy: {descendingByField: "BalanceUpdate_Balance_maximum"}
+    ) {
+      BalanceUpdate {
+        Balance: PostBalance(maximum: Block_Slot)
+        Currency {
+          Name
+          Symbol
+          MintAddress
+          UpdateAuthority
         }
       }
     }
+  }
+}
+
     """
     
     variables = {
@@ -757,12 +1109,13 @@ def main():
     
     # Find bonding curve address
     print("Finding bonding curve address...")
-    bonding_curve = get_bonding_curve_address(token_address, api_key)
-    if not bonding_curve:
+    bonding_curve_data = get_bonding_curve_address(token_address, api_key)
+    if not bonding_curve_data:
         print("Error: Could not find bonding curve address for this token.")
         print("We only support tokens created in the last 8 hours.")
         sys.exit(1)
     
+    bonding_curve = bonding_curve_data.get("bonding_curve") if isinstance(bonding_curve_data, dict) else bonding_curve_data
     print(f"Found bonding curve: {bonding_curve}\n")
     
     # Step 1: Get first transfers
