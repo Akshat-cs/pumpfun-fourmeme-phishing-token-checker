@@ -298,7 +298,15 @@ function displayLiquidityAnalysis(liquidity_sol) {
 
   return `
     <div style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
-      <h3 style="margin: 0; margin-bottom: 20px; color: var(--accent-primary);">Liquidity Analysis</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="margin: 0; color: var(--accent-primary);">Liquidity Analysis</h3>
+        <a href="https://ide.bitquery.io/Latest-liquidity-in-the-curve" target="_blank" rel="noopener noreferrer" 
+           style="background: transparent; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 16px; color: var(--text-primary); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease; display: inline-block;"
+           onmouseover="this.style.borderColor='var(--accent-primary)'; this.style.color='var(--accent-primary)'" 
+           onmouseout="this.style.borderColor='#d1d5db'; this.style.color='var(--text-primary)'">
+          Get API
+        </a>
+      </div>
       
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-secondary); border-radius: 8px; border: 1px solid var(--border);">
@@ -609,7 +617,15 @@ function displaySafeResult(data) {
     const { mayhem_ai_agent } = data.data || {};
     topHoldersHTML = `
             <div id="top-holders" class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
-                <h3 style="margin-bottom: 20px; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                    <a href="https://ide.bitquery.io/top-10-holders-of-a-pumpfun-token" target="_blank" rel="noopener noreferrer" 
+                       style="background: transparent; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 16px; color: var(--text-primary); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease; display: inline-block;"
+                       onmouseover="this.style.borderColor='var(--accent-primary)'; this.style.color='var(--accent-primary)'" 
+                       onmouseout="this.style.borderColor='#d1d5db'; this.style.color='var(--text-primary)'">
+                        Get API
+                    </a>
+                </div>
                 <div style="overflow-x: auto;">
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
@@ -767,7 +783,15 @@ function displayPhishyResult(data) {
     const { bonding_curve, mayhem_ai_agent } = data.data || {};
     topHoldersHTML = `
             <div id="top-holders" class="top-holders-section" style="margin-top: 30px; padding-top: 30px; border-top: 1px solid var(--border);">
-                <h3 style="margin-bottom: 20px; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; color: var(--accent-primary);">🏆 Top 10 Holders</h3>
+                    <a href="https://placeholder-link.com/holders-api" target="_blank" rel="noopener noreferrer" 
+                       style="background: transparent; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 16px; color: var(--text-primary); text-decoration: none; font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease; display: inline-block;"
+                       onmouseover="this.style.borderColor='var(--accent-primary)'; this.style.color='var(--accent-primary)'" 
+                       onmouseout="this.style.borderColor='#d1d5db'; this.style.color='var(--text-primary)'">
+                        Get API
+                    </a>
+                </div>
                 <div style="overflow-x: auto;">
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
