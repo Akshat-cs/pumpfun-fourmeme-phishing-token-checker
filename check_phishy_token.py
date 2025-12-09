@@ -1112,7 +1112,7 @@ def main():
     bonding_curve_data = get_bonding_curve_address(token_address, api_key)
     if not bonding_curve_data:
         print("Error: Could not find bonding curve address for this token.")
-        print("We only support tokens created in the last 8 hours.")
+        print("App provides analysis only on recent tokens.")
         sys.exit(1)
     
     bonding_curve = bonding_curve_data.get("bonding_curve") if isinstance(bonding_curve_data, dict) else bonding_curve_data

@@ -92,7 +92,7 @@ def check_token():
             if not bonding_curve_data:
                 return jsonify({
                     'success': False,
-                    'error': 'We only support tokens created in the last 8 hours',
+                    'error': 'App provides analysis only on recent tokens',
                     'error_type': 'info'
                 }), 400
             
