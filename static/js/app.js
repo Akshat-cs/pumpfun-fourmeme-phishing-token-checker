@@ -118,7 +118,9 @@ async function handleCheck() {
   startProgress();
 
   try {
-    const response = await fetch("/api/check", {
+    // Use base path from window.APP_BASE_PATH or default to /pumpfun-token-sniffer
+    const basePath = window.APP_BASE_PATH || '/pumpfun-token-sniffer';
+    const response = await fetch(`${basePath}/api/check`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

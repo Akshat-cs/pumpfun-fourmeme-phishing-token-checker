@@ -72,6 +72,10 @@
       </footer>
     </div>
 
+    <script>
+      // Set base path for API calls
+      window.APP_BASE_PATH = '{{ base_path }}';
+    </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>

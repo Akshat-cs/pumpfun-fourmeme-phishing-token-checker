@@ -19,8 +19,14 @@ from datetime import datetime
 # Load environment variables
 load_dotenv()
 
+# Application root path for subpath deployment
+APPLICATION_ROOT = '/pumpfun-token-sniffer'
+
 app = Flask(__name__)
 CORS(app)
+
+# Configure application root for subpath deployment
+app.config['APPLICATION_ROOT'] = APPLICATION_ROOT
 
 # Get API key from environment
 API_KEY = os.getenv("BITQUERY_API_KEY")
@@ -31,12 +37,13 @@ phishy_tokens_cache = deque(maxlen=100)
 
 
 @app.route('/')
+@app.route(f'{APPLICATION_ROOT}/')
 def index():
     """Serve the main page."""
-    return render_template('index.html')
+    return render_template('index.html', base_path=APPLICATION_ROOT)
 
 
-@app.route('/api/recent-phishy', methods=['GET'])
+@app.route(f'{APPLICATION_ROOT}/api/recent-phishy', methods=['GET'])
 def get_recent_phishy():
     """Get recent phishy tokens from cache."""
     # Convert deque to list (most recent first)
@@ -55,7 +62,7 @@ def validate_solana_address(token_address: str) -> bool:
     return not token_address.startswith('0x') and len(token_address) >= 32 and len(token_address) <= 44
 
 
-@app.route('/api/check', methods=['POST'])
+@app.route(f'{APPLICATION_ROOT}/api/check', methods=['POST'])
 def check_token():
     """API endpoint to check if a token is phishy."""
     try:
